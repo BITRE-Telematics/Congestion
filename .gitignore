@@ -1,0 +1,15 @@
+data/
+graphs/
+bw/
+times/
+city_maps/
+metrics/
+route_maps/
+done.txt
+done_by_month.txt
+failed_scripts.txt
+.Rproj.user
+.RData
+keys/
+.Rhistory
+README.html
