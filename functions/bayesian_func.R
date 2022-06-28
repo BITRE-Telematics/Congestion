@@ -120,9 +120,9 @@ seg_hr_model = function(h, df, all_segs, hr_means_raw, mu_sig = 10, sig_sig = 0.
     return(post)
 }
 
-ml_model_func = function(id, df, hr_means_raw, mu_sig = 10, sig_sig = 0.5, catch_error= TRUE){
+ml_model_func = function(id, df, hr_means_raw, mu_sig = 40, sig_sig = 20, catch_error= TRUE){
   
-      print(sprintf("starting seg %s", id))
+      print(sprintf("starting seg %s with mu_sig: %s and sig_sig: %s", id, mu_sig, sig_sig))
       dat = filter(df, osm_id == id) %>% 
         select(b_var, hour)
       

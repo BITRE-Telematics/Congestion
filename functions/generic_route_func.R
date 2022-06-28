@@ -1,7 +1,7 @@
 
-##designed to be iterated through row wise with a data frame read from route_parameters.csv, such that "row" is a single row dataframe
+##designed to be iterated through row wise with a data frame read from route_parameters.csv, such that "r" is a single row dataframe
 route_func = function(
-    row,
+    r,
     year,
     url_format = "http://127.0.0.1:5000/route/v1/driving/%s;%s;%s?steps=true&geometries=geojson&overview=full",
     map_style = "mapbox://styles/geowonk/cklpsnqf95jw017olf76p1vbt",
@@ -11,13 +11,12 @@ route_func = function(
     ){
   
   
-  route_name = row$route_name
-  start = row$start 
-  finish= row$finish 
-  headers = names(row)
-  headers %<-% unlist(row)
+  route_name = r$route_name
+  start = r$start 
+  finish= r$finish 
   
-  middle= row$middle %>% str_replace_all("\\|", ";") %>%str_remove_all(" ")
+  
+  middle= r$middle %>% str_replace_all("\\|", ";") %>%str_remove_all(" ")
   
   
   #Getting route between points from OSRM
@@ -25,16 +24,17 @@ route_func = function(
     sprintf(url_format, start, middle ,finish) %>% str_remove_all("NA;") %>% str_remove_all(" ")
                  ) %>% 
     jsonlite::fromJSON()
-  
+  if(route$routes$distance/1000 > 200){
+    stop("Excessive route length, bypassing")
+  }
   #make map of route for displau
   route_geom = extract_geom(route)
   st_crs(route_geom) = 4269
   
   
   route_map = display_map(route_name, route_geom, mb_token, map_style)
-  ggsave(plot = route_map, file = sprintf('congestions/route_maps/display_maps/%s_route.PNG', route_name),
-         width = 20, height = 20, units = "cm", dpi = dpi)
-  ##Saving the route geomteries for later city maps
+  
+  ##Saving the route geometries for later city maps
   write_csv(tibble('route_name' = route_name, geom = st_as_text(route_geom)), "route_maps/geometries.csv", append = T)
   
   ##Extracting segment ids and distances
@@ -48,6 +48,7 @@ route_func = function(
   ##Pulling data from the database. Since this takes time it checks if data is already on the disk for a given segment.
   data_file = sprintf('data/%s_data.csv.gz', route_name)
   if(!file.exists(data_file)){
+    print("pulling data")
   cl = makeCluster(n_cores, type = "FORK")
   d = parLapply(cl, segs$name, function(osm_id){
     get_dat(osm_id, year = year)
@@ -59,7 +60,23 @@ route_func = function(
       )
   
   }else{
-   d = read_csv(data_file, col_types = cols('osm_id' = col_character(), 'speed_limit' = col_double()))
+   d = read_csv(data_file,
+                col_types = cols(
+                  imp_speed = col_double(),
+                  datetime = col_double(),
+                  week = col_double(),
+                  year = col_double(),
+                  dayOfWeek = col_double(),
+                  hour = col_double(),
+                  timezone = col_character(),
+                  osm_id = col_character(),
+                  class = col_character(),
+                  speed_limit = col_double(),
+                  direction = col_double(),
+                  forward = col_logical()
+                  )
+     )
+   
    d = filter(d, osm_id %in% segs$name)
    new_segs = segs$name[!(segs$name %in% d$osm_id)]
    cl = makeCluster(n_cores, type = 'FORK')
@@ -79,14 +96,22 @@ route_func = function(
   d = filter(d, !is.na(imp_speed))
   
   ##filtering low speeds if required
-  if(!is.na(row$min_speed)){
-    d = filter(d, imp_speed > row$min_speed)
+  if(!is.na(r$min_speed)){
+    d = filter(d, imp_speed > r$min_speed)
   }
   
   ##filtering direction
-  if(!is.na(row$dir)){
-    d = filter_dir(d, row$dir)
+  if(!is.na(r$dir)){
+    d = filter_dir(d, r$dir)
   }
+  
+  ##weighting months
+  if(!is.na(r$mon_weight)){
+    weights = format_weights(r$mon_weight)
+    d = month_weight(d, weights$month, weights$weight)
+    
+  }
+  
   
   ##check for na speedlimits and replacing with assumed values. The analysis assumes vehicles always obey speed limits
   
@@ -96,12 +121,12 @@ route_func = function(
   d = replace_na_limits(d)
   
   ## deriving median and interquartile ranges for each segment by hour using the methods stipulated in the parameters
-  sum_sp = summarise_speed(d, row, segs, min_speed = row$min_speed)
+  sum_sp = summarise_speed(d, r, segs, min_speed = r$min_speed)
   all_segs = length(unique(segs$name)) == length(unique(sum_sp$osm_id))
   sum_sp = sum_sp %>%
     full_join(segs, by = c('osm_id' = 'name'))
   
-  if(!row$bayes){
+  if(!r$bayes){
     sum_sp = impute_missing(sum_sp)
   }
   
@@ -137,32 +162,53 @@ route_func = function(
   
   map_route(df = sp_df, name = sprintf("%s.PNG",route_name), dir = "route_maps/breakdown_maps")
 }
+
 ##applies the desired method for each segment
-summarise_speed = function(d, row, segs, min_speed = 5){
-  if(row$bayes){
-    multi_level = if_else(is.null(row$multi_level), F, row$multi_level)
-    variable = ifelse(row$bayes_raw_speeds, "imp_speed", "under_lim")
+summarise_speed = function(d, r, segs, min_speed = 5){
+  if(!is.na(r$min_speed)){
+    d = d %>% mutate(
+      imp_speed = ifelse(imp_speed<r$min_speed, r$min_speed, imp_speed)
+    )
+  }
+  if(r$bayes){
+    multi_level = if_else(is.null(r$multi_level), F, r$multi_level)
+    if(multi_level){
+      mu_sig = 15
+      sig_sig = 10
+    }else{
+      mu_sig = 10
+      sig_sig = 0.5
+    }
+    variable = ifelse(r$bayes_raw_speeds, "imp_speed", "under_lim")
     if(require(rethinking)){
-      sum_sp = bayes_bd(df = d, all_segs = segs$name, variable = variable, multi_level = multi_level) %>%
-      gen_iq_bayes(under_lim = !row$bayes_raw_speeds) ## draws from posterior distribution to derive interquartile range and median
+      sum_sp = bayes_bd(df = d, all_segs = segs$name, variable = variable, multi_level = multi_level, mu_sig = mu_sig, sig_sig = sig_sig) %>%
+      gen_iq_bayes(under_lim = !r$bayes_raw_speeds) ## draws from posterior distribution to derive interquartile range and median
     }else{
       ##local solution to allow machines that don't have stan installed to run model remotely
       sum_sp = stanserver_bd(df = d, all_segs = segs$name, variable = variable) %>%
-       gen_iq_bayes(under_lim = !row$bayes_raw_speeds) 
+       gen_iq_bayes(under_lim = !r$bayes_raw_speeds) 
     }
   }else{
     ##raw median and interquartile options
     sum_sp = extract_range(d)
   }
-  if(row$adjust_low){
+  if(r$adjust_low){
     sum_sp = adjust_low(sum_sp)
   }
-  if(!is.na(row$min_speed)){
-    sum_sp = sum_sp %>% mutate(
-      LQ = ifelse(LQ<row$min_speed, row$min_speed, LQ)
-    )
-  }
-
+  
+  
+  sum_sp = add_week_range(sum_sp, d)
  return(sum_sp)
 }
 
+
+add_week_range = function(sum_sp, d){
+  d_m_w = d %>% group_by(osm_id, hour) %>%
+    summarise(
+     LQ_week = quantile(week, 0.25),
+      med_week = median(week),
+      UQ_week = quantile(week, 0.75)
+    )
+  sum_sp = left_join(sum_sp, d_m_w, by = c('osm_id', 'hour'))
+  return(sum_sp)
+}

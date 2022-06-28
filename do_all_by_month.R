@@ -1,5 +1,5 @@
-source("functions/route_data.R")
 source("functions/keys_and_connections.R")
+source("functions/route_data.R")
 source("functions/generic_route_func.R")
 source('functions/bayesian_func.R')
 source('functions/stanserver.R')

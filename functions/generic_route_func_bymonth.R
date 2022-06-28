@@ -2,7 +2,7 @@
 ##designed to be iterated through row wise with a data frame read from route_parameters.csv, such that "row" is a single row dataframe
 ##It replicates generic_route_func.R but also interates by month, to capture trends over the year
 route_func_by_month = function(
-    row,
+    r,
     year,
     url_format = "http://127.0.0.1:5000/route/v1/driving/%s;%s;%s?steps=true&geometries=geojson&overview=full",
     map_style = "mapbox://styles/geowonk/cklpsnqf95jw017olf76p1vbt",
@@ -11,22 +11,22 @@ route_func_by_month = function(
     ){
   
   
-  route_name = row$route_name
-  start = row$start 
-  finish= row$finish 
+  route_name = r$route_name
+  start = r$start 
+  finish= r$finish 
   headers = names(row)
   headers %<-% unlist(row)
   
-  middle= row$middle %>% str_replace("\\|", ";")
+  middle= r$middle %>% str_replace("\\|", ";")
   
   
-  route_name = row$route_name
-  start = row$start 
-  finish= row$finish 
+  route_name = r$route_name
+  start = r$start 
+  finish= r$finish 
   headers = names(row)
   headers %<-% unlist(row)
   
-  middle= row$middle %>% str_replace_all("\\|", ";") %>%str_remove_all(" ")
+  middle= r$middle %>% str_replace_all("\\|", ";") %>%str_remove_all(" ")
   
   
   #Getting route between points from OSRM
@@ -78,12 +78,12 @@ route_func_by_month = function(
   d = filter(d, !is.na(imp_speed))
 
   ##filtering low speeds if required
-  if(!is.na(row$min_speed)){
-    d = filter(d, imp_speed > row$min_speed)
+  if(!is.na(r$min_speed)){
+    d = filter(d, imp_speed > r$min_speed)
   }
   ##filtering direction
-  if(!is.na(row$dir)){
-    d = filter_dir(d, row$dir)
+  if(!is.na(r$dir)){
+    d = filter_dir(d, r$dir)
   }
   ##check for na speedlimits and replacing with assumed values. The analysis assumes vehicles always obey speed limits
   
@@ -96,7 +96,7 @@ route_func_by_month = function(
   
   sum_sp = purrr::map(unique(1:12), function(m){
     out = filter(d, month  == m) %>% 
-      summarise_speed(row, segs) %>% 
+      summarise_speed(r, segs) %>% 
       left_join(segs, by = c('osm_id' = 'name')) %>%
       mutate(
         month = m,

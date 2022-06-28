@@ -149,7 +149,7 @@ plot_times = function(df, name, max_y = NULL, rm_incomplete =F, by_mon = F, ncol
           breaks = seq(0, 23, 4),
           labels = paste0(seq(0, 23, 4), ":00")
           ) +
-    ggthemes::theme_tufte() +
+    ggthemes::theme_tufte() + theme(plot.background = element_rect(fill = 'white', colour = 'white')) +
     labs(x = 'Hour of day', y = 'Travel time (minutes)', title = name)
   if(by_mon){
     plt = plt + facet_wrap(~month, ncol = ncol)

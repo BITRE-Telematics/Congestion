@@ -1,5 +1,5 @@
-source("functions/route_data.R")
 source("functions/keys_and_connections.R")
+source("functions/route_data.R")
 source("functions/generic_route_func.R")
 source('functions/bayesian_func.R')
 source('functions/stanserver.R')
@@ -38,13 +38,15 @@ route_parameters = read_csv("route_parameters.csv", col_types = cols(
     )         
   )
 
+
+
 purrr::walk(purrr::transpose(route_parameters), function(r){
   try({
     print(r$route_name)
-    route_func(r, year = 2020)
+    route_func(r, year = 2021, n_cores = 3)
     write_lines(r$route_name, "done.txt", append = T)
   })
 })
-##Creates outputs for report including maps, times plots with comparable axes and maps with both direction of routes 
-source("functions/route_metrics.R")
+ ##Creates outputs for report including maps, times plots with comparable axes and maps with both direction of routes 
+#source("functions/route_metrics.R")
 

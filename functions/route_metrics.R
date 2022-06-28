@@ -77,7 +77,10 @@ seg_dat = list.files("./bw", full.name = T, pattern = "_bw.csv") %>%
 
 
 
-route_dists = seg_dat %>% group_by(`route_name`) %>%
+route_dists = seg_dat %>% 
+  select(route_name, distance, osm_id) %>%
+  unique() %>%
+  group_by(`route_name`) %>%
   summarise(distance =sum(distance, na.rm =T))
 
 
@@ -124,8 +127,10 @@ walk(unique(breakdown_table$short_name), function(n){
 ##Bidirectional maps
 walk(unique(breakdown_table$short_name), function(n){
   print(n)
-  route_geom_list = filter(breakdown_table, short_name == n)$route_geom %>% unique()
-  bidirectional_map(n, route_geom_list, mb_token, map_style, dpi = 150)
+  try({
+    route_geom_list = filter(breakdown_table, short_name == n)$route_geom %>% unique()
+    bidirectional_map(n, route_geom_list, mb_token, map_style, dpi = 150)
+  })
 })
 
 ###City maps
